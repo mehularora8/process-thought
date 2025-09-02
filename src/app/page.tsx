@@ -1,103 +1,231 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useRef } from 'react';
+import ThoughtCanvas, { ThoughtCanvasRef } from '@/components/ThoughtCanvas';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [prompt, setPrompt] = useState('');
+  const [temperature, setTemperature] = useState(0.7);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [answer, setAnswer] = useState('');
+  const [showConnecting, setShowConnecting] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const canvasRef = useRef<ThoughtCanvasRef>(null);
+  const connectingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const handleRun = async () => {
+    if (!prompt.trim() || isStreaming) return;
+    
+    setHasStarted(true);
+    setIsStreaming(true);
+    setAnswer('');
+    setShowConnecting(false);
+    
+    // Start animation after component has had time to render
+    setTimeout(() => {
+      if (canvasRef.current) {
+        canvasRef.current.reset();
+        canvasRef.current.startAnimation();
+      }
+    }, 100);
+
+    // Show "connecting..." if no delta within 2s (per spec)
+    connectingTimeoutRef.current = setTimeout(() => {
+      setShowConnecting(true);
+    }, 2000);
+
+    try {
+      const response = await fetch('/api/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt,
+          temperature,
+          model: 'claude-3-sonnet'
+        }),
+      });
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const eventData = JSON.parse(line.slice(6));
+                  
+                  switch (eventData.type) {
+                    case 'start':
+                      console.log('Stream started:', eventData.data);
+                      break;
+                      
+                    case 'delta':
+                      const { text_chunk } = eventData.data;
+                      // Clear connecting timeout on first delta
+                      if (connectingTimeoutRef.current) {
+                        clearTimeout(connectingTimeoutRef.current);
+                        setShowConnecting(false);
+                      }
+                      canvasRef.current?.addDelta(text_chunk, Math.random() * 2 + 0.5);
+                      break;
+                      
+                    case 'end':
+                      console.log('Stream ended:', eventData.data);
+                      canvasRef.current?.startFlourish();
+                      break;
+                      
+                    case 'answer':
+                      // Show answer at flourish end (per spec)
+                      setTimeout(() => {
+                        setAnswer(eventData.data.answer);
+                        setIsStreaming(false);
+                      }, 3000);
+                      break;
+                  }
+                } catch (parseError) {
+                  console.error('Error parsing SSE data:', parseError);
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          console.error('Stream processing error:', streamError);
+          setIsStreaming(false);
+        }
+      };
+
+      processStream();
+
+    } catch (error) {
+      console.error('Error starting stream:', error);
+      setAnswer('Error: Failed to start the thinking process. Please try again.');
+      setIsStreaming(false);
+    }
+  };
+
+  const copyAnswer = () => {
+    navigator.clipboard.writeText(answer);
+  };
+
+  return (
+    <div className="min-h-screen h-screen bg-stone-50 p-6 font-mono text-stone-900 overflow-hidden">
+      <h1 className="text-xl font-bold mb-6 border-b border-stone-800 pb-2">PROCESS THOUGHT</h1>
+      
+      <div className={`transition-all duration-500 ${hasStarted ? (answer ? 'grid grid-cols-3 gap-6 h-[calc(100vh-120px)]' : 'grid grid-cols-2 gap-6 h-[calc(100vh-120px)]') : 'flex items-center justify-center h-[calc(100vh-120px)]'}`}>
+        {/* Input Panel - Center when not started, left column when started */}
+        <div className={`${hasStarted ? (isStreaming ? 'opacity-50' : '') : 'max-w-md w-full'} transition-opacity duration-300`}>
+          <div className={`${hasStarted ? '' : 'text-center'}`}>
+            {hasStarted && (
+              <label htmlFor="prompt" className={`block text-sm mb-2 uppercase tracking-wide ${isStreaming ? 'text-stone-400' : ''}`}>
+                Query
+              </label>
+            )}
+            <textarea
+              id="prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              disabled={isStreaming}
+              className={`w-full h-32 p-4 border bg-white font-mono text-sm resize-none focus:outline-none transition-colors ${
+                isStreaming 
+                  ? 'border-stone-400 text-stone-400 cursor-not-allowed' 
+                  : 'border-stone-300 focus:border-stone-400'
+              }`}
+              placeholder={hasStarted ? "Enter your query..." : "Ask or say something..."}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+
+          {!isStreaming && (
+            <div className={`mt-6 ${hasStarted ? '' : 'text-center'}`}>
+              <div className="flex gap-2 items-center justify-center">
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="text-xs uppercase tracking-wide border border-stone-600 py-1 px-2 hover:bg-stone-800 hover:text-white transition-colors"
+                >
+                  {showAdvanced ? '▼ Hide Settings' : '▶ Advanced Settings'}
+                </button>
+
+                <button
+                  onClick={handleRun}
+                  disabled={!prompt.trim()}
+                  className="text-xs uppercase tracking-wide border border-stone-800 bg-stone-800 text-white py-1 px-2 hover:bg-white hover:text-stone-800 disabled:bg-stone-400 disabled:text-stone-200 disabled:cursor-not-allowed transition-colors"
+                >
+                  Execute
+                </button>
+              </div>
+
+              {showAdvanced && (
+                <div className="border-t border-stone-300 pt-4 mt-4">
+                  <label htmlFor="temperature" className="block text-xs font-semibold mb-2 uppercase tracking-wide">
+                    Temperature: {temperature}
+                  </label>
+                  <input
+                    id="temperature"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={temperature}
+                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                    className="w-full accent-stone-800"
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Center Panel - Canvas (only visible after start) */}
+        {hasStarted && (
+          <div className="flex flex-col h-full animate-in slide-in-from-right-5 duration-500">
+            <h2 className="text-sm mb-2 uppercase tracking-wide">Process</h2>
+            <div className="flex-1 bg-white border-2 border-stone-800 relative overflow-hidden">
+              <ThoughtCanvas
+                ref={canvasRef}
+                temperature={temperature}
+                className="w-full h-full"
+              />
+              {!isStreaming && !answer && (
+                <div className="absolute inset-0 flex items-center justify-center text-stone-400 pointer-events-none font-mono text-xs uppercase tracking-wide">
+                  Ready for Query
+                </div>
+              )}
+              {showConnecting && (
+                <div className="absolute bottom-2 left-2 text-xs text-stone-600 bg-stone-100 px-2 py-1 border border-stone-300 font-mono uppercase tracking-wide">
+                  Connecting...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Right Panel - Answer (only visible after processing is complete) */}
+        {answer && (
+          <div className="flex flex-col h-full animate-in slide-in-from-right-5 duration-500 delay-150">
+            <h2 className="text-sm mb-2 uppercase tracking-wide">Output</h2>
+            <div className="flex-1 bg-white border border-stone-300 p-4 overflow-auto">
+              <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">{answer}</pre>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
