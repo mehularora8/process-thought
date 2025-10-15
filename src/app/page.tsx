@@ -3,25 +3,118 @@
 import { useState, useRef } from 'react';
 import ThoughtAudio, { ThoughtAudioRef } from '@/components/ThoughtAudio';
 
+// Pattern detection regexes (must match ThoughtAudio.tsx)
+const UNCERTAINTY_MARKERS = /\b(maybe|might|possibly|perhaps|could|seems|appears|uncertain|unsure|probably|likely)\b/i;
+const CERTAINTY_MARKERS = /\b(clearly|definitely|must|obviously|certainly|surely|indeed|undoubtedly|always|never)\b/i;
+const REVISION_MARKERS = /\b(actually|wait|however|but|although|though|yet|nevertheless|nonetheless|no,|hmm|reconsider|rethink)\b/i;
+const QUESTION_MARKER = /\?/;
+const ENUMERATION_MARKERS = /\b(first|second|third|next|then|finally|lastly|step \d+|initially|subsequently|\d+\)|\d+\.)\b/i;
+const EMPHASIS_MARKERS = /\b(really|very|extremely|quite|highly|particularly|especially|significantly|crucially|absolutely)\b/i;
+const NEGATION_MARKERS = /\b(not|never|won't|can't|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|no\b)\b/i;
+const CAUSATION_MARKERS = /\b(because|therefore|thus|hence|consequently|as a result|so|since|given that|due to)\b/i;
+const HEDGING_MARKERS = /\b(sort of|kind of|somewhat|relatively|fairly|rather|more or less|approximately)\b/i;
+const COMPARISON_MARKERS = /\b(similar|different|unlike|whereas|compared to|in contrast|on the other hand|alternatively)\b/i;
+const RESOLUTION_MARKERS = /\b(in conclusion|to summarize|ultimately|in the end|overall|in summary|final|conclusion)\b/i;
+
+interface TextChunk {
+  text: string;
+  patterns: string[];
+}
+
+type PresetMode = 'minimal' | 'standard' | 'maximum';
+
+// Example queries that create interesting sonic textures
+const EXAMPLE_QUERIES = [
+  {
+    title: 'Mathematical Proof',
+    prompt: 'Prove that the square root of 2 is irrational.',
+    description: 'Lots of logical reasoning and enumeration'
+  },
+  {
+    title: 'Philosophical Dilemma',
+    prompt: 'Is it possible to be truly altruistic, or are all actions ultimately self-interested?',
+    description: 'Uncertainty, revision, and hedging'
+  },
+  {
+    title: 'Creative Problem',
+    prompt: 'Write a short detective story where the detective uses unconventional methods to solve the case.',
+    description: 'Narrative structure with enumeration'
+  },
+  {
+    title: 'Complex Explanation',
+    prompt: 'Explain how neural networks learn through backpropagation as if I\'m 12 years old.',
+    description: 'Causation, comparison, and emphasis'
+  },
+];
+
 export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [temperature, setTemperature] = useState(1.0);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [thinking, setThinking] = useState('');
+  const [thinkingChunks, setThinkingChunks] = useState<TextChunk[]>([]);
   const [answer, setAnswer] = useState('');
   const [showConnecting, setShowConnecting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showLegend, setShowLegend] = useState(true);
+  const [presetMode, setPresetMode] = useState<PresetMode>('standard');
   const audioRef = useRef<ThoughtAudioRef>(null);
   const connectingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // Detect patterns in text chunk (filtered by preset mode)
+  const detectPatterns = (text: string): string[] => {
+    const patterns: string[] = [];
+
+    // Minimal mode: Only core patterns (certainty, revision, question)
+    if (presetMode === 'minimal') {
+      if (CERTAINTY_MARKERS.test(text)) patterns.push('certainty');
+      if (REVISION_MARKERS.test(text)) patterns.push('revision');
+      if (QUESTION_MARKER.test(text)) patterns.push('question');
+      return patterns;
+    }
+
+    // Standard mode: All 11 patterns
+    if (UNCERTAINTY_MARKERS.test(text)) patterns.push('uncertainty');
+    if (CERTAINTY_MARKERS.test(text)) patterns.push('certainty');
+    if (REVISION_MARKERS.test(text)) patterns.push('revision');
+    if (QUESTION_MARKER.test(text)) patterns.push('question');
+    if (ENUMERATION_MARKERS.test(text)) patterns.push('enumeration');
+    if (EMPHASIS_MARKERS.test(text)) patterns.push('emphasis');
+    if (NEGATION_MARKERS.test(text)) patterns.push('negation');
+    if (CAUSATION_MARKERS.test(text)) patterns.push('causation');
+    if (HEDGING_MARKERS.test(text)) patterns.push('hedging');
+    if (COMPARISON_MARKERS.test(text)) patterns.push('comparison');
+    if (RESOLUTION_MARKERS.test(text)) patterns.push('resolution');
+
+    // Maximum mode: Same patterns but we'll show all matches visually (no filtering)
+    return patterns;
+  };
+
+  // Get color for pattern type
+  const getPatternColor = (pattern: string): string => {
+    const colors: Record<string, string> = {
+      uncertainty: 'bg-purple-200 text-purple-900',
+      certainty: 'bg-green-200 text-green-900',
+      revision: 'bg-red-200 text-red-900',
+      question: 'bg-blue-200 text-blue-900',
+      enumeration: 'bg-yellow-200 text-yellow-900',
+      emphasis: 'bg-orange-200 text-orange-900',
+      negation: 'bg-gray-300 text-gray-900',
+      causation: 'bg-indigo-200 text-indigo-900',
+      hedging: 'bg-pink-200 text-pink-900',
+      comparison: 'bg-cyan-200 text-cyan-900',
+      resolution: 'bg-emerald-200 text-emerald-900',
+    };
+    return colors[pattern] || '';
+  };
 
   const handleRun = async () => {
     if (!prompt.trim() || isStreaming) return;
     
     setHasStarted(true);
     setIsStreaming(true);
-    setThinking('');
+    setThinkingChunks([]);
     setAnswer('');
     setShowConnecting(false);
     
@@ -86,8 +179,9 @@ export default function Home() {
                         clearTimeout(connectingTimeoutRef.current);
                         setShowConnecting(false);
                       }
-                      // Append to thinking display
-                      setThinking(prev => prev + text_chunk);
+                      // Detect patterns and add chunk
+                      const patterns = detectPatterns(text_chunk);
+                      setThinkingChunks(prev => [...prev, { text: text_chunk, patterns }]);
                       audioRef.current?.addDelta(text_chunk);
                       break;
 
@@ -213,7 +307,7 @@ export default function Home() {
       <div className={`transition-all duration-500 ${hasStarted ? 'h-[calc(100vh-120px)]' : 'flex items-center justify-center h-[calc(100vh-120px)]'}`}>
         {!hasStarted ? (
           /* Initial centered prompt */
-          <div className="max-w-md w-full">
+          <div className="max-w-2xl w-full">
             <div className="text-center">
               <textarea
                 id="prompt"
@@ -224,13 +318,29 @@ export default function Home() {
               />
             </div>
 
+            {/* Example Queries - Always visible */}
+            <div className="mt-4 text-left">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {EXAMPLE_QUERIES.map((example, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setPrompt(example.prompt)}
+                    className="text-left p-3 border border-stone-300 hover:border-stone-800 hover:bg-stone-50 transition-colors"
+                  >
+                    <div className="text-xs font-semibold mb-1">{example.title}</div>
+                    <div className="text-xs text-stone-500">{example.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-6 text-center">
-              <div className="flex gap-2 items-center justify-center">
+              <div className="flex gap-2 items-center justify-center flex-wrap">
                 <button
                   onClick={() => setShowAdvanced(!showAdvanced)}
                   className="text-xs uppercase tracking-wide border border-stone-600 py-1 px-2 hover:bg-stone-800 hover:text-white transition-colors"
                 >
-                  {showAdvanced ? '▼ Hide Settings' : '▶ Advanced Settings'}
+                  {showAdvanced ? '▼ Hide Settings' : '▶ Settings'}
                 </button>
 
                 <button
@@ -244,19 +354,64 @@ export default function Home() {
 
               {showAdvanced && (
                 <div className="border-t border-stone-300 pt-4 mt-4">
-                  <label htmlFor="temperature" className="block text-xs font-semibold mb-2 uppercase tracking-wide">
-                    Temperature: {temperature}
-                  </label>
-                  <input
-                    id="temperature"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={temperature}
-                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                    className="w-full accent-stone-800"
-                  />
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold mb-2 uppercase tracking-wide">
+                      Preset Mode
+                    </label>
+                    <div className="flex gap-2 justify-center">
+                      <button
+                        onClick={() => setPresetMode('minimal')}
+                        className={`text-xs uppercase tracking-wide border py-1 px-3 transition-colors ${
+                          presetMode === 'minimal'
+                            ? 'border-stone-800 bg-stone-800 text-white'
+                            : 'border-stone-300 hover:border-stone-600'
+                        }`}
+                      >
+                        Minimal
+                      </button>
+                      <button
+                        onClick={() => setPresetMode('standard')}
+                        className={`text-xs uppercase tracking-wide border py-1 px-3 transition-colors ${
+                          presetMode === 'standard'
+                            ? 'border-stone-800 bg-stone-800 text-white'
+                            : 'border-stone-300 hover:border-stone-600'
+                        }`}
+                      >
+                        Standard
+                      </button>
+                      <button
+                        onClick={() => setPresetMode('maximum')}
+                        className={`text-xs uppercase tracking-wide border py-1 px-3 transition-colors ${
+                          presetMode === 'maximum'
+                            ? 'border-stone-800 bg-stone-800 text-white'
+                            : 'border-stone-300 hover:border-stone-600'
+                        }`}
+                      >
+                        Maximum
+                      </button>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-2">
+                      {presetMode === 'minimal' && 'Only core patterns: certainty, revision, question'}
+                      {presetMode === 'standard' && 'All 11 linguistic patterns detected'}
+                      {presetMode === 'maximum' && 'All patterns with full visual highlighting'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="temperature" className="block text-xs font-semibold mb-2 uppercase tracking-wide">
+                      Temperature: {temperature}
+                    </label>
+                    <input
+                      id="temperature"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={temperature}
+                      onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                      className="w-full accent-stone-800"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -275,16 +430,54 @@ export default function Home() {
             </div>
 
             {/* Thinking box */}
-            {(isStreaming || thinking) && (
+            {(isStreaming || thinkingChunks.length > 0) && (
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs uppercase tracking-wide text-stone-600">
                     {showConnecting ? 'Connecting...' : 'Thinking'}
                   </label>
-                  <span className="text-xs text-stone-400">♪ Listen to the process</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowLegend(!showLegend)}
+                      className="text-xs text-stone-500 hover:text-stone-700 underline"
+                    >
+                      {showLegend ? 'Hide' : 'Show'} Legend
+                    </button>
+                    <span className="text-xs text-stone-400">♪ Listen to the process</span>
+                  </div>
                 </div>
+                {showLegend && (
+                  <div className="text-xs mb-2 p-2 bg-stone-50 border border-stone-200 rounded">
+                    <div className="flex flex-wrap gap-1">
+                      <span className="inline-block px-1 bg-purple-200 text-purple-900">uncertainty</span>
+                      <span className="inline-block px-1 bg-green-200 text-green-900">certainty</span>
+                      <span className="inline-block px-1 bg-red-200 text-red-900">revision</span>
+                      <span className="inline-block px-1 bg-blue-200 text-blue-900">question</span>
+                      <span className="inline-block px-1 bg-yellow-200 text-yellow-900">enumeration</span>
+                      <span className="inline-block px-1 bg-orange-200 text-orange-900">emphasis</span>
+                      <span className="inline-block px-1 bg-gray-300 text-gray-900">negation</span>
+                      <span className="inline-block px-1 bg-indigo-200 text-indigo-900">causation</span>
+                      <span className="inline-block px-1 bg-pink-200 text-pink-900">hedging</span>
+                      <span className="inline-block px-1 bg-cyan-200 text-cyan-900">comparison</span>
+                      <span className="inline-block px-1 bg-emerald-200 text-emerald-900">resolution</span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex-1 bg-white border border-stone-300 p-4 overflow-auto">
-                  <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-stone-700">{thinking}</pre>
+                  <div className="text-sm font-mono leading-relaxed text-stone-700 whitespace-pre-wrap">
+                    {thinkingChunks.map((chunk, i) => {
+                      if (chunk.patterns.length === 0) {
+                        return <span key={i}>{chunk.text}</span>;
+                      }
+                      // Use the first (primary) pattern for color
+                      const primaryPattern = chunk.patterns[0];
+                      return (
+                        <span key={i} className={`${getPatternColor(primaryPattern)} px-0.5`} title={chunk.patterns.join(', ')}>
+                          {chunk.text}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -307,7 +500,7 @@ export default function Home() {
                 <button
                   onClick={() => {
                     setHasStarted(false);
-                    setThinking('');
+                    setThinkingChunks([]);
                     setAnswer('');
                     setPrompt('');
                   }}
