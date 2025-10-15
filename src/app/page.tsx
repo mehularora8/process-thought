@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ThoughtAudio, { ThoughtAudioRef } from '@/components/ThoughtAudio';
 
 // Pattern detection regexes (must match ThoughtAudio.tsx)
@@ -57,10 +57,27 @@ export default function Home() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [showLegend, setShowLegend] = useState(true);
   const [presetMode, setPresetMode] = useState<PresetMode>('standard');
   const audioRef = useRef<ThoughtAudioRef>(null);
   const connectingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // Axis active states
+  const [axisActive, setAxisActive] = useState({
+    certainty: false,
+    reasoning: false,
+    revision: false,
+    resolution: false,
+  });
+
+  // Handle active axes changes from audio engine
+  const handleActiveAxesChange = (axes: {
+    certainty: boolean;
+    reasoning: boolean;
+    revision: boolean;
+    resolution: boolean;
+  }) => {
+    setAxisActive(axes);
+  };
 
   // Detect patterns in text chunk (filtered by preset mode)
   const detectPatterns = (text: string): string[] => {
@@ -248,50 +265,22 @@ export default function Home() {
 
             <div className="space-y-4 text-sm leading-relaxed">
               <p>
-                <strong>Process Thought</strong> sonifies Claude&apos;s extended thinking using a <strong>multi-layered audio architecture</strong> that detects
-                linguistic patterns and triggers 5 simultaneous sound layers. Each detected pattern activates specific layers that blend together,
-                creating rich, complex soundscapes that reveal the model&apos;s cognitive state.
+                <strong>Process Thought</strong> converts Claude&apos;s extended thinking into audio. It detects 11 linguistic patterns
+                grouped into 4 cognitive axes and triggers 5 audio layers that blend to create evolving soundscapes.
               </p>
 
               <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">5-Layer Architecture</h3>
+                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">How It Works</h3>
                 <ul className="space-y-1 ml-4 text-xs">
-                  <li><strong>BASS</strong> (40-150Hz) - Foundation layer triggered by structure: enumeration, causation, resolution</li>
-                  <li><strong>MID</strong> (150-2000Hz) - Main melodic layer, always present, varies by pattern (chords, arpeggios, glissandos)</li>
-                  <li><strong>HIGH</strong> (2000-8000Hz) - Shimmer layer for emphasis, comparison, hedging (sparkle and detail)</li>
-                  <li><strong>PAD</strong> (sustained chords) - Background atmosphere for uncertainty, resolution, causation</li>
-                  <li><strong>TEXTURE</strong> (filtered noise) - Organic grain for uncertainty, revision, negation</li>
+                  <li>Patterns like &quot;maybe&quot;, &quot;however&quot;, &quot;because&quot; trigger different combinations of audio layers</li>
+                  <li>Multiple patterns can fire simultaneously, creating polyphonic textures</li>
+                  <li>Intensity controls pitch and volume; complexity adds variation</li>
+                  <li>Effects (reverb, delay, chorus) add spatial depth</li>
                 </ul>
-              </div>
-
-              <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Detected Linguistic Patterns</h3>
-                <ul className="space-y-1 ml-4 text-xs">
-                  <li><strong>Revision</strong> (&quot;actually&quot;, &quot;wait&quot;, &quot;however&quot;, &quot;but&quot;) → Descending pattern on MID + noise TEXTURE</li>
-                  <li><strong>Uncertainty</strong> (&quot;maybe&quot;, &quot;might&quot;, &quot;seems&quot;) → Dissonant PAD + noise TEXTURE</li>
-                  <li><strong>Certainty</strong> (&quot;clearly&quot;, &quot;definitely&quot;, &quot;must&quot;) → Major chord on MID</li>
-                  <li><strong>Questions</strong> (&quot;?&quot;) → Ascending arpeggio on MID</li>
-                  <li><strong>Enumeration</strong> (&quot;first&quot;, &quot;second&quot;, &quot;next&quot;, &quot;finally&quot;) → BASS foundation</li>
-                  <li><strong>Emphasis</strong> (&quot;really&quot;, &quot;very&quot;, &quot;extremely&quot;, &quot;crucially&quot;) → Bright burst on HIGH layer</li>
-                  <li><strong>Negation</strong> (&quot;not&quot;, &quot;never&quot;, &quot;can&apos;t&quot;, &quot;won&apos;t&quot;) → Filtered TEXTURE noise</li>
-                  <li><strong>Causation</strong> (&quot;because&quot;, &quot;therefore&quot;, &quot;thus&quot;, &quot;hence&quot;) → BASS + consonant PAD</li>
-                  <li><strong>Hedging</strong> (&quot;sort of&quot;, &quot;kind of&quot;, &quot;somewhat&quot;, &quot;relatively&quot;) → Subtle HIGH shimmer</li>
-                  <li><strong>Comparison</strong> (&quot;similar&quot;, &quot;different&quot;, &quot;whereas&quot;, &quot;unlike&quot;) → HIGH layer detail</li>
-                  <li><strong>Resolution</strong> (&quot;in conclusion&quot;, &quot;ultimately&quot;, &quot;overall&quot;) → BASS + consonant PAD</li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">How Layers Blend</h3>
-                <p className="text-xs">
-                  Multiple patterns can trigger simultaneously. For example, text with <em>both</em> &quot;first&quot; (enumeration) and &quot;really&quot; (emphasis)
-                  would activate BASS + HIGH + MID layers together. Intensity (0.5-1.0) controls pitch height and volume. Complexity
-                  (commas, parentheses) adds pitch variation. All 5 layers route through reverb, delay, and chorus effects for spatial depth.
-                </p>
               </div>
 
               <p className="text-xs text-stone-600 border-t border-stone-300 pt-4 mt-4">
-                <strong>Sound ON.</strong> Using Claude 3.7 Sonnet with extended thinking (5000 token budget). Multi-layered synthesis via Tone.js.
+                Using Claude 4.5 Sonnet with extended thinking. Audio synthesis via Tone.js.
               </p>
             </div>
           </div>
@@ -299,7 +288,11 @@ export default function Home() {
       )}
 
       {/* Audio Engine (invisible) */}
-      <ThoughtAudio ref={audioRef} temperature={temperature} />
+      <ThoughtAudio
+        ref={audioRef}
+        temperature={temperature}
+        onActiveAxesChange={handleActiveAxesChange}
+      />
 
       <div className={`transition-all duration-500 ${hasStarted ? 'h-[calc(100vh-120px)]' : 'flex items-center justify-center h-[calc(100vh-120px)]'}`}>
         {!hasStarted ? (
@@ -428,52 +421,83 @@ export default function Home() {
 
             {/* Thinking box */}
             {(isStreaming || thinkingChunks.length > 0) && (
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs uppercase tracking-wide text-stone-600">
-                    {showConnecting ? 'Connecting...' : 'Thinking'}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowLegend(!showLegend)}
-                      className="text-xs text-stone-500 hover:text-stone-700 underline"
-                    >
-                      {showLegend ? 'Hide' : 'Show'} Legend
-                    </button>
-                    <span className="text-xs text-stone-400">♪ Listen to the process</span>
+              <div className="flex-1 flex gap-4 min-h-0">
+                {/* Thinking content - left side */}
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs uppercase tracking-wide text-stone-600">
+                      {showConnecting ? 'Connecting...' : 'Thinking'}
+                    </label>
                   </div>
-                </div>
-                {showLegend && (
-                  <div className="text-xs mb-2 p-2 bg-stone-50 border border-stone-200 rounded">
-                    <div className="flex flex-wrap gap-1">
-                      <span className="inline-block px-1 bg-purple-200 text-purple-900">uncertainty</span>
-                      <span className="inline-block px-1 bg-green-200 text-green-900">certainty</span>
-                      <span className="inline-block px-1 bg-red-200 text-red-900">revision</span>
-                      <span className="inline-block px-1 bg-blue-200 text-blue-900">question</span>
-                      <span className="inline-block px-1 bg-yellow-200 text-yellow-900">enumeration</span>
-                      <span className="inline-block px-1 bg-orange-200 text-orange-900">emphasis</span>
-                      <span className="inline-block px-1 bg-gray-300 text-gray-900">negation</span>
-                      <span className="inline-block px-1 bg-indigo-200 text-indigo-900">causation</span>
-                      <span className="inline-block px-1 bg-pink-200 text-pink-900">hedging</span>
-                      <span className="inline-block px-1 bg-cyan-200 text-cyan-900">comparison</span>
-                      <span className="inline-block px-1 bg-emerald-200 text-emerald-900">resolution</span>
+                  <div className="flex-1 bg-white border border-stone-300 p-4 overflow-auto">
+                    <div className="text-sm font-mono leading-relaxed text-stone-700 whitespace-pre-wrap">
+                      {thinkingChunks.map((chunk, i) => {
+                        if (chunk.patterns.length === 0) {
+                          return <span key={i}>{chunk.text}</span>;
+                        }
+                        // Use the first (primary) pattern for color
+                        const primaryPattern = chunk.patterns[0];
+                        return (
+                          <span key={i} className={`${getPatternColor(primaryPattern)} px-0.5`} title={chunk.patterns.join(', ')}>
+                            {chunk.text}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
-                )}
-                <div className="flex-1 bg-white border border-stone-300 p-4 overflow-auto">
-                  <div className="text-sm font-mono leading-relaxed text-stone-700 whitespace-pre-wrap">
-                    {thinkingChunks.map((chunk, i) => {
-                      if (chunk.patterns.length === 0) {
-                        return <span key={i}>{chunk.text}</span>;
-                      }
-                      // Use the first (primary) pattern for color
-                      const primaryPattern = chunk.patterns[0];
-                      return (
-                        <span key={i} className={`${getPatternColor(primaryPattern)} px-0.5`} title={chunk.patterns.join(', ')}>
-                          {chunk.text}
-                        </span>
-                      );
-                    })}
+                </div>
+
+                {/* Legend - right side */}
+                <div className="w-80 flex flex-col min-h-0">
+                  <div className="flex-1 bg-white border border-stone-300 p-4 overflow-auto">
+                    <div className="space-y-4 text-xs">
+                      {/* CERTAINTY AXIS */}
+                      <div className={`pb-3 border-b border-stone-200 transition-colors ${axisActive.certainty ? 'bg-purple-50' : ''}`}>
+                        <div className={`font-bold uppercase tracking-wide mb-2 ${axisActive.certainty ? 'text-purple-700' : 'text-stone-700'}`}>
+                          Certainty
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="inline-block px-2 py-0.5 bg-purple-200 text-purple-900">uncertainty</span>
+                          <span className="inline-block px-2 py-0.5 bg-green-200 text-green-900">certainty</span>
+                          <span className="inline-block px-2 py-0.5 bg-pink-200 text-pink-900">hedging</span>
+                        </div>
+                      </div>
+
+                      {/* REASONING AXIS */}
+                      <div className={`pb-3 border-b border-stone-200 transition-colors ${axisActive.reasoning ? 'bg-blue-50' : ''}`}>
+                        <div className={`font-bold uppercase tracking-wide mb-2 ${axisActive.reasoning ? 'text-blue-700' : 'text-stone-700'}`}>
+                          Reasoning
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="inline-block px-2 py-0.5 bg-indigo-200 text-indigo-900">causation</span>
+                          <span className="inline-block px-2 py-0.5 bg-yellow-200 text-yellow-900">enumeration</span>
+                          <span className="inline-block px-2 py-0.5 bg-cyan-200 text-cyan-900">comparison</span>
+                        </div>
+                      </div>
+
+                      {/* REVISION AXIS */}
+                      <div className={`pb-3 border-b border-stone-200 transition-colors ${axisActive.revision ? 'bg-red-50' : ''}`}>
+                        <div className={`font-bold uppercase tracking-wide mb-2 ${axisActive.revision ? 'text-red-700' : 'text-stone-700'}`}>
+                          Revision
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="inline-block px-2 py-0.5 bg-red-200 text-red-900">revision</span>
+                          <span className="inline-block px-2 py-0.5 bg-gray-300 text-gray-900">negation</span>
+                          <span className="inline-block px-2 py-0.5 bg-blue-200 text-blue-900">question</span>
+                        </div>
+                      </div>
+
+                      {/* RESOLUTION AXIS */}
+                      <div className={`transition-colors ${axisActive.resolution ? 'bg-green-50' : ''}`}>
+                        <div className={`font-bold uppercase tracking-wide mb-2 ${axisActive.resolution ? 'text-green-700' : 'text-stone-700'}`}>
+                          Resolution
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="inline-block px-2 py-0.5 bg-emerald-200 text-emerald-900">resolution</span>
+                          <span className="inline-block px-2 py-0.5 bg-orange-200 text-orange-900">emphasis</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -494,6 +518,17 @@ export default function Home() {
             {/* Run again button */}
             {!isStreaming && answer && (
               <div className="flex justify-center gap-2">
+                <button
+                  onClick={() => {
+                    if (audioRef.current && thinkingChunks.length > 0) {
+                      const textChunks = thinkingChunks.map(chunk => chunk.text);
+                      audioRef.current.replay(textChunks, 2.0);
+                    }
+                  }}
+                  className="text-xs uppercase tracking-wide border border-stone-800 py-1 px-3 hover:bg-stone-800 hover:text-white transition-colors"
+                >
+                  🔊 Replay Audio
+                </button>
                 <button
                   onClick={() => {
                     setHasStarted(false);

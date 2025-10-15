@@ -5,12 +5,22 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useSta
 // Dynamically import Tone.js
 type ToneType = typeof import('tone');
 
+export interface MixerControls {
+  certainty: { muted: boolean; solo: boolean; volume: number };
+  reasoning: { muted: boolean; solo: boolean; volume: number };
+  revision: { muted: boolean; solo: boolean; volume: number };
+  resolution: { muted: boolean; solo: boolean; volume: number };
+}
+
 export interface ThoughtAudioRef {
   startAudio: () => void;
   addDelta: (text: string) => void;
   startFlourish: () => void;
   stopAudio: () => void;
   reset: () => void;
+  updateMixerControls: (controls: MixerControls) => void;
+  setActiveAxes: (axes: { certainty: boolean; reasoning: boolean; revision: boolean; resolution: boolean }) => void;
+  replay: (chunks: string[], speed?: number) => void;
 }
 
 // Linguistic marker patterns
@@ -29,6 +39,7 @@ const RESOLUTION_MARKERS = /\b(in conclusion|to summarize|ultimately|in the end|
 
 interface ThoughtAudioProps {
   temperature: number;
+  onActiveAxesChange?: (axes: { certainty: boolean; reasoning: boolean; revision: boolean; resolution: boolean }) => void;
 }
 
 // Musical scales/modes for different cognitive phases
@@ -42,8 +53,16 @@ const PHASE_SCALES = {
 };
 
 const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
-  (props, ref) => {
+  ({ temperature, onActiveAxesChange }, ref) => {
     const [Tone, setTone] = useState<ToneType | null>(null);
+
+    // Mixer controls state
+    const mixerControlsRef = useRef<MixerControls>({
+      certainty: { muted: false, solo: false, volume: 100 },
+      reasoning: { muted: false, solo: false, volume: 100 },
+      revision: { muted: false, solo: false, volume: 100 },
+      resolution: { muted: false, solo: false, volume: 100 },
+    });
 
     // Load Tone.js dynamically
     useEffect(() => {
@@ -205,6 +224,48 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       };
     }, [Tone]);
 
+    // Determine which cognitive axes are active based on patterns
+    const getActiveAxes = useCallback((patterns: {
+      hasUncertainty: boolean;
+      hasCertainty: boolean;
+      hasRevision: boolean;
+      hasQuestion: boolean;
+      hasEnumeration: boolean;
+      hasEmphasis: boolean;
+      hasNegation: boolean;
+      hasCausation: boolean;
+      hasHedging: boolean;
+      hasComparison: boolean;
+      hasResolution: boolean;
+    }) => {
+      return {
+        certainty: patterns.hasUncertainty || patterns.hasCertainty || patterns.hasHedging,
+        reasoning: patterns.hasCausation || patterns.hasEnumeration || patterns.hasComparison,
+        revision: patterns.hasRevision || patterns.hasNegation || patterns.hasQuestion,
+        resolution: patterns.hasResolution || patterns.hasEmphasis,
+      };
+    }, []);
+
+    // Calculate gain multiplier based on mixer controls
+    const getAxisGainMultiplier = useCallback((axisName: keyof MixerControls): number => {
+      const controls = mixerControlsRef.current;
+      const axis = controls[axisName];
+      const anySolo = Object.values(controls).some((a) => a.solo);
+
+      // If any axis is soloed, mute all non-solo axes
+      if (anySolo && !axis.solo) {
+        return 0;
+      }
+
+      // If this axis is muted, return 0
+      if (axis.muted) {
+        return 0;
+      }
+
+      // Return volume as a multiplier (0-1)
+      return axis.volume / 100;
+    }, []);
+
     // Multi-layer sound triggering based on detected patterns
     const triggerLayers = useCallback((
       patterns: {
@@ -225,6 +286,18 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
     ) => {
       if (!Tone) return;
 
+      // Determine active axes and notify parent
+      const activeAxes = getActiveAxes(patterns);
+      if (onActiveAxesChange) {
+        onActiveAxesChange(activeAxes);
+      }
+
+      // Get gain multipliers for each axis
+      const certaintyGain = getAxisGainMultiplier('certainty');
+      const reasoningGain = getAxisGainMultiplier('reasoning');
+      const revisionGain = getAxisGainMultiplier('revision');
+      const resolutionGain = getAxisGainMultiplier('resolution');
+
       const {
         hasUncertainty, hasCertainty, hasRevision, hasQuestion,
         hasEnumeration, hasEmphasis, hasNegation, hasCausation,
@@ -232,62 +305,73 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       } = patterns;
 
       // BASS LAYER: Triggered by structure/causation (foundation)
+      // Controlled by REASONING and RESOLUTION axes
       if (hasCausation || hasEnumeration || hasResolution) {
-        const bassFreq = baseFrequency * 0.25; // Two octaves down
-        const bassVolume = -18 + (intensity * 5);
-        bassLayerRef.current?.triggerAttackRelease(
-          bassFreq,
-          '4n',
-          undefined,
-          Tone.dbToGain(bassVolume)
-        );
+        const axisGain = hasCausation || hasEnumeration ? reasoningGain : resolutionGain;
+        if (axisGain > 0) {
+          const bassFreq = baseFrequency * 0.25; // Two octaves down
+          const bassVolume = -18 + (intensity * 5);
+          bassLayerRef.current?.triggerAttackRelease(
+            bassFreq,
+            '4n',
+            undefined,
+            Tone.dbToGain(bassVolume) * axisGain
+          );
+        }
       }
 
       // MID LAYER: Main melodic content (always present)
+      // Controlled by REVISION and CERTAINTY axes
       if (midLayerRef.current) {
         const midVolume = -12 + (intensity * 8);
 
         if (hasRevision) {
-          // Descending pattern for revision
-          [0, -2, -4, -6, -8].forEach((semitones, i) => {
-            const freq = baseFrequency * Math.pow(2, semitones / 12);
-            setTimeout(() => {
-              midLayerRef.current?.triggerAttackRelease(
-                freq,
-                '32n',
-                undefined,
-                Tone.dbToGain(midVolume - i)
-              );
-            }, i * 30);
-          });
+          // Descending pattern for revision - controlled by REVISION axis
+          if (revisionGain > 0) {
+            [0, -2, -4, -6, -8].forEach((semitones, i) => {
+              const freq = baseFrequency * Math.pow(2, semitones / 12);
+              setTimeout(() => {
+                midLayerRef.current?.triggerAttackRelease(
+                  freq,
+                  '32n',
+                  undefined,
+                  Tone.dbToGain(midVolume - i) * revisionGain
+                );
+              }, i * 30);
+            });
+          }
         } else if (hasQuestion) {
-          // Ascending arpeggio for questions
-          [0, 2, 4, 7, 9].forEach((semitones, i) => {
-            const freq = baseFrequency * Math.pow(2, semitones / 12);
-            setTimeout(() => {
-              midLayerRef.current?.triggerAttackRelease(
-                freq,
-                '16n',
-                undefined,
-                Tone.dbToGain(midVolume - i)
-              );
-            }, i * 40);
-          });
+          // Ascending arpeggio for questions - controlled by REVISION axis
+          if (revisionGain > 0) {
+            [0, 2, 4, 7, 9].forEach((semitones, i) => {
+              const freq = baseFrequency * Math.pow(2, semitones / 12);
+              setTimeout(() => {
+                midLayerRef.current?.triggerAttackRelease(
+                  freq,
+                  '16n',
+                  undefined,
+                  Tone.dbToGain(midVolume - i) * revisionGain
+                );
+              }, i * 40);
+            });
+          }
         } else if (hasCertainty) {
-          // Major chord for certainty
-          [0, 4, 7].forEach((semitones, i) => {
-            const freq = baseFrequency * Math.pow(2, semitones / 12);
-            setTimeout(() => {
-              midLayerRef.current?.triggerAttackRelease(
-                freq,
-                '8n',
-                undefined,
-                Tone.dbToGain(midVolume - (i * 3))
-              );
-            }, i * 20);
-          });
+          // Major chord for certainty - controlled by CERTAINTY axis
+          if (certaintyGain > 0) {
+            [0, 4, 7].forEach((semitones, i) => {
+              const freq = baseFrequency * Math.pow(2, semitones / 12);
+              setTimeout(() => {
+                midLayerRef.current?.triggerAttackRelease(
+                  freq,
+                  '8n',
+                  undefined,
+                  Tone.dbToGain(midVolume - (i * 3)) * certaintyGain
+                );
+              }, i * 20);
+            });
+          }
         } else {
-          // Simple note
+          // Simple note - play at base volume, no axis control on default
           midLayerRef.current.triggerAttackRelease(
             baseFrequency,
             '8n',
@@ -298,60 +382,70 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       }
 
       // HIGH LAYER: Sparkle and detail (triggered by emphasis, comparison, hedging)
+      // Controlled by RESOLUTION, REASONING, and CERTAINTY axes
       if (hasEmphasis || hasComparison || hasHedging) {
-        const highFreq = baseFrequency * 2.5; // Higher frequencies
-        const highVolume = -22 + (intensity * 6);
+        const axisGain = hasEmphasis ? resolutionGain : hasComparison ? reasoningGain : certaintyGain;
+        if (axisGain > 0) {
+          const highFreq = baseFrequency * 2.5; // Higher frequencies
+          const highVolume = -22 + (intensity * 6);
 
-        if (hasEmphasis) {
-          // Bright burst for emphasis
-          [0, 5, 7, 12].forEach((semitones, i) => {
-            const freq = highFreq * Math.pow(2, semitones / 12);
-            setTimeout(() => {
-              highLayerRef.current?.triggerAttackRelease(
-                freq,
-                '32n',
-                undefined,
-                Tone.dbToGain(highVolume - i * 2)
-              );
-            }, i * 25);
-          });
-        } else {
-          // Subtle shimmer
-          highLayerRef.current?.triggerAttackRelease(
-            highFreq,
-            '16n',
-            undefined,
-            Tone.dbToGain(highVolume)
-          );
+          if (hasEmphasis) {
+            // Bright burst for emphasis
+            [0, 5, 7, 12].forEach((semitones, i) => {
+              const freq = highFreq * Math.pow(2, semitones / 12);
+              setTimeout(() => {
+                highLayerRef.current?.triggerAttackRelease(
+                  freq,
+                  '32n',
+                  undefined,
+                  Tone.dbToGain(highVolume - i * 2) * axisGain
+                );
+              }, i * 25);
+            });
+          } else {
+            // Subtle shimmer
+            highLayerRef.current?.triggerAttackRelease(
+              highFreq,
+              '16n',
+              undefined,
+              Tone.dbToGain(highVolume) * axisGain
+            );
+          }
         }
       }
 
-      // PAD LAYER: Sustained background (triggered by uncertainty, resolution)
+      // PAD LAYER: Sustained background (triggered by uncertainty, resolution, causation)
+      // Controlled by CERTAINTY, RESOLUTION, and REASONING axes
       if (hasUncertainty || hasResolution || hasCausation) {
-        const padVolume = -28 + (intensity * 5);
-        const chord = hasUncertainty
-          ? [0, 1, 6] // Dissonant for uncertainty
-          : [0, 4, 7]; // Consonant for resolution/causation
+        const axisGain = hasUncertainty ? certaintyGain : hasResolution ? resolutionGain : reasoningGain;
+        if (axisGain > 0) {
+          const padVolume = -28 + (intensity * 5);
+          const chord = hasUncertainty
+            ? [0, 1, 6] // Dissonant for uncertainty
+            : [0, 4, 7]; // Consonant for resolution/causation
 
-        chord.forEach((semitones, i) => {
-          const freq = baseFrequency * Math.pow(2, semitones / 12);
-          padLayerRef.current?.triggerAttackRelease(
-            freq,
-            '2n',
-            undefined,
-            Tone.dbToGain(padVolume - i * 2)
-          );
-        });
+          chord.forEach((semitones, i) => {
+            const freq = baseFrequency * Math.pow(2, semitones / 12);
+            padLayerRef.current?.triggerAttackRelease(
+              freq,
+              '2n',
+              undefined,
+              Tone.dbToGain(padVolume - i * 2) * axisGain
+            );
+          });
+        }
       }
 
       // TEXTURE LAYER: Noise (triggered by uncertainty, revision, negation)
+      // Controlled by CERTAINTY and REVISION axes
       if (hasUncertainty || hasRevision || hasNegation) {
-        if (textureNoiseRef.current && filterRef.current) {
+        const axisGain = hasUncertainty ? certaintyGain : revisionGain;
+        if (axisGain > 0 && textureNoiseRef.current && filterRef.current) {
           const textureVolume = -38 + (intensity * 10);
           const filterFreq = hasRevision ? 1200 : hasNegation ? 600 : 900;
 
           filterRef.current.frequency.value = filterFreq;
-          textureNoiseRef.current.volume.value = textureVolume;
+          textureNoiseRef.current.volume.value = textureVolume + Tone.gainToDb(axisGain);
 
           if (textureNoiseRef.current.state !== 'started') {
             textureNoiseRef.current.start();
@@ -365,7 +459,7 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
           }, 150);
         }
       }
-    }, [Tone]);
+    }, [Tone, getActiveAxes, getAxisGainMultiplier, onActiveAxesChange]);
 
     useImperativeHandle(ref, () => ({
       startAudio: async () => {
@@ -523,8 +617,143 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
 
         scheduledNotesRef.current = [];
         isPlayingRef.current = false;
+      },
+
+      updateMixerControls: (controls: MixerControls) => {
+        mixerControlsRef.current = controls;
+      },
+
+      setActiveAxes: (axes: { certainty: boolean; reasoning: boolean; revision: boolean; resolution: boolean }) => {
+        // This is called from parent to update active axes display
+        // The actual logic is handled in triggerLayers callback
+        if (onActiveAxesChange) {
+          onActiveAxesChange(axes);
+        }
+      },
+
+      replay: async (chunks: string[], speed = 1.0) => {
+        if (!Tone) return;
+
+        // Stop any ongoing audio
+        if (textureNoiseRef.current && textureNoiseRef.current.state === 'started') {
+          textureNoiseRef.current.stop();
+        }
+
+        // Start audio context if not already started
+        await Tone.start();
+        isPlayingRef.current = true;
+
+        // Replay each chunk with a delay based on speed
+        const delay = 100 / speed; // Base delay of 100ms adjusted by speed
+
+        for (let i = 0; i < chunks.length; i++) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          // Process the chunk through addDelta logic
+          const text = chunks[i];
+          if (!midLayerRef.current) continue;
+
+          // Update tracking
+          currentSentenceRef.current += text;
+          recentTextRef.current += text;
+          if (recentTextRef.current.length > 200) {
+            recentTextRef.current = recentTextRef.current.slice(-200);
+          }
+
+          // Detect patterns and trigger audio (reusing existing logic)
+          const hasUncertainty = UNCERTAINTY_MARKERS.test(text);
+          const hasCertainty = CERTAINTY_MARKERS.test(text);
+          const hasRevision = REVISION_MARKERS.test(text);
+          const hasMetacognition = METACOGNITIVE_MARKERS.test(text);
+          const hasQuestion = QUESTION_MARKER.test(text);
+          const hasEnumeration = ENUMERATION_MARKERS.test(text);
+          const hasEmphasis = EMPHASIS_MARKERS.test(text);
+          const hasNegation = NEGATION_MARKERS.test(text);
+          const hasCausation = CAUSATION_MARKERS.test(text);
+          const hasHedging = HEDGING_MARKERS.test(text);
+          const hasComparison = COMPARISON_MARKERS.test(text);
+          const hasResolution = RESOLUTION_MARKERS.test(text);
+
+          // Calculate intensity
+          let intensity = 0.5;
+          if (hasRevision) {
+            intensity = 0.9;
+          } else if (hasResolution) {
+            intensity = 0.85;
+          } else if (hasCertainty) {
+            intensity = 0.8;
+          } else if (hasUncertainty || hasMetacognition || hasHedging) {
+            intensity = 0.7;
+          } else if (hasEnumeration) {
+            intensity = 0.65;
+          } else if (hasQuestion) {
+            intensity = 0.6;
+          } else if (hasCausation) {
+            intensity = 0.6;
+          }
+
+          if (hasEmphasis) {
+            intensity = Math.min(1.0, intensity + 0.15);
+          }
+
+          // Calculate base frequency
+          const baseMidi = 48;
+          const midiRange = 36;
+          let midiNote = baseMidi + (intensity * midiRange);
+
+          const commaCount = (text.match(/,/g) || []).length;
+          const complexity = commaCount + (text.match(/\(/g) || []).length;
+          if (complexity > 0) {
+            midiNote += complexity * 2;
+          }
+
+          const baseFrequency = Tone.Frequency(midiNote, 'midi').toFrequency();
+
+          // Trigger audio
+          triggerLayers(
+            {
+              hasUncertainty,
+              hasCertainty,
+              hasRevision,
+              hasQuestion,
+              hasEnumeration,
+              hasEmphasis,
+              hasNegation,
+              hasCausation,
+              hasHedging,
+              hasComparison,
+              hasResolution,
+            },
+            intensity,
+            baseFrequency
+          );
+        }
+
+        // Final flourish
+        setTimeout(() => {
+          if (midLayerRef.current && Tone) {
+            const scale = PHASE_SCALES.concluding;
+            const chord = [scale[0], scale[2], scale[4]];
+
+            chord.forEach((note, i) => {
+              setTimeout(() => {
+                midLayerRef.current?.triggerAttackRelease(note, '2n', undefined, 0.5);
+                if (highLayerRef.current) {
+                  const highNote = Tone.Frequency(note).transpose(12).toNote();
+                  highLayerRef.current.triggerAttackRelease(highNote, '2n', undefined, 0.3);
+                }
+              }, i * 100);
+            });
+
+            if (bassLayerRef.current) {
+              setTimeout(() => {
+                bassLayerRef.current?.triggerAttackRelease(scale[0], '1n', undefined, 0.4);
+              }, 0);
+            }
+          }
+        }, delay * 2);
       }
-    }), [Tone, triggerLayers]);
+    }), [Tone, triggerLayers, onActiveAxesChange]);
 
     return null; // This component doesn't render anything
   }
