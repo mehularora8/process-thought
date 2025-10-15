@@ -540,7 +540,7 @@ const ThoughtCanvas = forwardRef<ThoughtCanvasRef, ThoughtCanvasProps>(
         animationRef.current = requestAnimationFrame(animate);
       },
 
-      addDelta: (text: string, tokenRate = 1) => {
+      addDelta: (text: string) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
 

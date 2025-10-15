@@ -218,9 +218,6 @@ export default function Home() {
     }
   };
 
-  const copyAnswer = () => {
-    navigator.clipboard.writeText(answer);
-  };
 
   return (
     <div className="min-h-screen h-screen bg-stone-50 p-6 font-mono text-stone-900 overflow-hidden">
@@ -251,9 +248,9 @@ export default function Home() {
 
             <div className="space-y-4 text-sm leading-relaxed">
               <p>
-                <strong>Process Thought</strong> sonifies Claude's extended thinking using a <strong>multi-layered audio architecture</strong> that detects
+                <strong>Process Thought</strong> sonifies Claude&apos;s extended thinking using a <strong>multi-layered audio architecture</strong> that detects
                 linguistic patterns and triggers 5 simultaneous sound layers. Each detected pattern activates specific layers that blend together,
-                creating rich, complex soundscapes that reveal the model's cognitive state.
+                creating rich, complex soundscapes that reveal the model&apos;s cognitive state.
               </p>
 
               <div>
@@ -270,24 +267,24 @@ export default function Home() {
               <div>
                 <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Detected Linguistic Patterns</h3>
                 <ul className="space-y-1 ml-4 text-xs">
-                  <li><strong>Revision</strong> ("actually", "wait", "however", "but") → Descending pattern on MID + noise TEXTURE</li>
-                  <li><strong>Uncertainty</strong> ("maybe", "might", "seems") → Dissonant PAD + noise TEXTURE</li>
-                  <li><strong>Certainty</strong> ("clearly", "definitely", "must") → Major chord on MID</li>
-                  <li><strong>Questions</strong> ("?") → Ascending arpeggio on MID</li>
-                  <li><strong>Enumeration</strong> ("first", "second", "next", "finally") → BASS foundation</li>
-                  <li><strong>Emphasis</strong> ("really", "very", "extremely", "crucially") → Bright burst on HIGH layer</li>
-                  <li><strong>Negation</strong> ("not", "never", "can't", "won't") → Filtered TEXTURE noise</li>
-                  <li><strong>Causation</strong> ("because", "therefore", "thus", "hence") → BASS + consonant PAD</li>
-                  <li><strong>Hedging</strong> ("sort of", "kind of", "somewhat", "relatively") → Subtle HIGH shimmer</li>
-                  <li><strong>Comparison</strong> ("similar", "different", "whereas", "unlike") → HIGH layer detail</li>
-                  <li><strong>Resolution</strong> ("in conclusion", "ultimately", "overall") → BASS + consonant PAD</li>
+                  <li><strong>Revision</strong> (&quot;actually&quot;, &quot;wait&quot;, &quot;however&quot;, &quot;but&quot;) → Descending pattern on MID + noise TEXTURE</li>
+                  <li><strong>Uncertainty</strong> (&quot;maybe&quot;, &quot;might&quot;, &quot;seems&quot;) → Dissonant PAD + noise TEXTURE</li>
+                  <li><strong>Certainty</strong> (&quot;clearly&quot;, &quot;definitely&quot;, &quot;must&quot;) → Major chord on MID</li>
+                  <li><strong>Questions</strong> (&quot;?&quot;) → Ascending arpeggio on MID</li>
+                  <li><strong>Enumeration</strong> (&quot;first&quot;, &quot;second&quot;, &quot;next&quot;, &quot;finally&quot;) → BASS foundation</li>
+                  <li><strong>Emphasis</strong> (&quot;really&quot;, &quot;very&quot;, &quot;extremely&quot;, &quot;crucially&quot;) → Bright burst on HIGH layer</li>
+                  <li><strong>Negation</strong> (&quot;not&quot;, &quot;never&quot;, &quot;can&apos;t&quot;, &quot;won&apos;t&quot;) → Filtered TEXTURE noise</li>
+                  <li><strong>Causation</strong> (&quot;because&quot;, &quot;therefore&quot;, &quot;thus&quot;, &quot;hence&quot;) → BASS + consonant PAD</li>
+                  <li><strong>Hedging</strong> (&quot;sort of&quot;, &quot;kind of&quot;, &quot;somewhat&quot;, &quot;relatively&quot;) → Subtle HIGH shimmer</li>
+                  <li><strong>Comparison</strong> (&quot;similar&quot;, &quot;different&quot;, &quot;whereas&quot;, &quot;unlike&quot;) → HIGH layer detail</li>
+                  <li><strong>Resolution</strong> (&quot;in conclusion&quot;, &quot;ultimately&quot;, &quot;overall&quot;) → BASS + consonant PAD</li>
                 </ul>
               </div>
 
               <div>
                 <h3 className="font-bold uppercase tracking-wide text-xs mb-2">How Layers Blend</h3>
                 <p className="text-xs">
-                  Multiple patterns can trigger simultaneously. For example, text with <em>both</em> "first" (enumeration) and "really" (emphasis)
+                  Multiple patterns can trigger simultaneously. For example, text with <em>both</em> &quot;first&quot; (enumeration) and &quot;really&quot; (emphasis)
                   would activate BASS + HIGH + MID layers together. Intensity (0.5-1.0) controls pitch height and volume. Complexity
                   (commas, parentheses) adds pitch variation. All 5 layers route through reverb, delay, and chorus effects for spatial depth.
                 </p>

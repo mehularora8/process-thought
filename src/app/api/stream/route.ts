@@ -34,7 +34,6 @@ export async function POST(request: NextRequest) {
 
         const startTime = Date.now();
         let tokenCount = 0;
-        let fullThinking = '';
         let fullAnswer = '';
 
         // Create streaming request with extended thinking
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
             if (chunk.delta.type === 'thinking_delta') {
               // Thinking text chunk
               const textChunk = chunk.delta.thinking;
-              fullThinking += textChunk;
               tokenCount++;
 
               const deltaEvent = {

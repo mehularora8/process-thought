@@ -42,7 +42,7 @@ const PHASE_SCALES = {
 };
 
 const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
-  ({ temperature }, ref) => {
+  (props, ref) => {
     const [Tone, setTone] = useState<ToneType | null>(null);
 
     // Load Tone.js dynamically
@@ -53,17 +53,17 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
     }, []);
 
     // Audio synthesis refs - Multi-layered architecture
-    const bassLayerRef = useRef<any | null>(null);
-    const midLayerRef = useRef<any | null>(null);
-    const highLayerRef = useRef<any | null>(null);
-    const padLayerRef = useRef<any | null>(null);
-    const textureNoiseRef = useRef<any | null>(null);
+    const bassLayerRef = useRef<ToneType['Synth'] | null>(null);
+    const midLayerRef = useRef<ToneType['PolySynth'] | null>(null);
+    const highLayerRef = useRef<ToneType['Synth'] | null>(null);
+    const padLayerRef = useRef<ToneType['PolySynth'] | null>(null);
+    const textureNoiseRef = useRef<ToneType['Noise'] | null>(null);
 
     // Effects
-    const filterRef = useRef<any | null>(null);
-    const reverbRef = useRef<any | null>(null);
-    const delayRef = useRef<any | null>(null);
-    const chorusRef = useRef<any | null>(null);
+    const filterRef = useRef<ToneType['Filter'] | null>(null);
+    const reverbRef = useRef<ToneType['Reverb'] | null>(null);
+    const delayRef = useRef<ToneType['FeedbackDelay'] | null>(null);
+    const chorusRef = useRef<ToneType['Chorus'] | null>(null);
 
     // Temporal analysis tracking
     const lastDeltaTimeRef = useRef<number>(0);
@@ -86,34 +86,6 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
     // Audio state
     const isPlayingRef = useRef<boolean>(false);
     const scheduledNotesRef = useRef<string[]>([]);
-
-    // Phase detection based on text patterns
-    const detectPhase = useCallback((text: string): { phase: string; intensity: number; trigger?: string } => {
-      if (!Tone) return { phase: 'idle', intensity: 0 };
-      const lower = text.toLowerCase();
-
-      const questionMatch = lower.match(/(what|how|why|could|might|maybe|perhaps|possibly|wonder|consider|seems|appears)/i);
-      if (questionMatch) {
-        return { phase: 'questioning', intensity: 0.8, trigger: questionMatch[0] };
-      }
-
-      const backtrackMatch = lower.match(/(actually|wait|however|but|although|on the other hand|reconsider)/i);
-      if (backtrackMatch) {
-        return { phase: 'backtracking', intensity: 1.0, trigger: backtrackMatch[0] };
-      }
-
-      const reasoningMatch = lower.match(/(because|since|therefore|thus|given|if|then|step|first|second|analyze)/i);
-      if (reasoningMatch) {
-        return { phase: 'reasoning', intensity: 0.6, trigger: reasoningMatch[0] };
-      }
-
-      const conclusionMatch = lower.match(/(clearly|obviously|certainly|must|definitely|conclude|answer|solution|result)/i);
-      if (conclusionMatch) {
-        return { phase: 'concluding', intensity: 0.9, trigger: conclusionMatch[0] };
-      }
-
-      return { phase: 'thinking', intensity: 0.5 };
-    }, [Tone]);
 
     // Initialize audio context and instruments
     useEffect(() => {
@@ -552,7 +524,7 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
         scheduledNotesRef.current = [];
         isPlayingRef.current = false;
       }
-    }), [Tone]);
+    }), [Tone, triggerLayers]);
 
     return null; // This component doesn't render anything
   }
