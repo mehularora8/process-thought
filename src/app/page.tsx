@@ -157,46 +157,50 @@ export default function Home() {
 
             <div className="space-y-4 text-sm leading-relaxed">
               <p>
-                <strong>Process Thought</strong> sonifies Claude's extended thinking in real-time by detecting linguistic patterns
-                that reveal psychological states. Each thinking pattern triggers a distinct musical signature, letting you
-                <em>hear</em> the model's uncertainty, revisions, exploration, and flow as it reasons.
+                <strong>Process Thought</strong> sonifies Claude's extended thinking using a <strong>multi-layered audio architecture</strong> that detects
+                linguistic patterns and triggers 5 simultaneous sound layers. Each detected pattern activates specific layers that blend together,
+                creating rich, complex soundscapes that reveal the model's cognitive state.
               </p>
 
               <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Thinking → Sound Mappings</h3>
+                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">5-Layer Architecture</h3>
                 <ul className="space-y-1 ml-4 text-xs">
-                  <li><strong>Revision</strong> ("actually", "wait", "but", "however") → <em>Descending glissando</em> - pitch falling through 5 steps</li>
-                  <li><strong>Uncertainty</strong> ("maybe", "might", "seems", "I think") → <em>Tremolo</em> - 4 wavering detuned notes + noise</li>
-                  <li><strong>Questions</strong> ("?") → <em>Ascending arpeggio</em> - rising pentatonic scale (exploratory)</li>
-                  <li><strong>Repetition</strong> (repeated phrases) → <em>Repeated notes</em> - same pitch, fading volume (working through)</li>
-                  <li><strong>Flowing</strong> (sustained certainty) → <em>Legato + perfect fifth</em> - smooth connected notes with harmony</li>
-                  <li><strong>Struggling</strong> (frequent uncertainty/revision) → <em>Dissonant cluster</em> - harsh minor 2nd + tritone + noise</li>
-                  <li><strong>Certainty</strong> ("clearly", "definitely", "must") → <em>Major chord</em> - clean consonant triad (0, 4, 7)</li>
-                  <li><strong>Neutral</strong> (no markers) → <em>Simple tone</em> - single note or perfect fifth</li>
+                  <li><strong>BASS</strong> (40-150Hz) - Foundation layer triggered by structure: enumeration, causation, resolution</li>
+                  <li><strong>MID</strong> (150-2000Hz) - Main melodic layer, always present, varies by pattern (chords, arpeggios, glissandos)</li>
+                  <li><strong>HIGH</strong> (2000-8000Hz) - Shimmer layer for emphasis, comparison, hedging (sparkle and detail)</li>
+                  <li><strong>PAD</strong> (sustained chords) - Background atmosphere for uncertainty, resolution, causation</li>
+                  <li><strong>TEXTURE</strong> (filtered noise) - Organic grain for uncertainty, revision, negation</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Additional Parameters</h3>
+                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Detected Linguistic Patterns</h3>
                 <ul className="space-y-1 ml-4 text-xs">
-                  <li><strong>State intensity</strong> → Pitch range (C3-C6) - more intense states = higher pitch</li>
-                  <li><strong>Complexity</strong> (commas, parentheses) → Pitch shift - complex syntax = higher notes</li>
-                  <li><strong>Certainty level</strong> → Timbre - uncertain = bright/harsh filter, certain = warm/soft filter</li>
-                  <li><strong>State intensity</strong> → Volume - stronger states are louder</li>
+                  <li><strong>Revision</strong> ("actually", "wait", "however", "but") → Descending pattern on MID + noise TEXTURE</li>
+                  <li><strong>Uncertainty</strong> ("maybe", "might", "seems") → Dissonant PAD + noise TEXTURE</li>
+                  <li><strong>Certainty</strong> ("clearly", "definitely", "must") → Major chord on MID</li>
+                  <li><strong>Questions</strong> ("?") → Ascending arpeggio on MID</li>
+                  <li><strong>Enumeration</strong> ("first", "second", "next", "finally") → BASS foundation</li>
+                  <li><strong>Emphasis</strong> ("really", "very", "extremely", "crucially") → Bright burst on HIGH layer</li>
+                  <li><strong>Negation</strong> ("not", "never", "can't", "won't") → Filtered TEXTURE noise</li>
+                  <li><strong>Causation</strong> ("because", "therefore", "thus", "hence") → BASS + consonant PAD</li>
+                  <li><strong>Hedging</strong> ("sort of", "kind of", "somewhat", "relatively") → Subtle HIGH shimmer</li>
+                  <li><strong>Comparison</strong> ("similar", "different", "whereas", "unlike") → HIGH layer detail</li>
+                  <li><strong>Resolution</strong> ("in conclusion", "ultimately", "overall") → BASS + consonant PAD</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">Detection Method</h3>
+                <h3 className="font-bold uppercase tracking-wide text-xs mb-2">How Layers Blend</h3>
                 <p className="text-xs">
-                  Real-time regex pattern matching analyzes each text chunk for linguistic markers and structural features.
-                  Recent state history (last 10 chunks) infers higher-level patterns like "flowing" (sustained certainty)
-                  and "struggling" (frequent uncertainty). Priority system: revision overrides uncertainty overrides certainty.
+                  Multiple patterns can trigger simultaneously. For example, text with <em>both</em> "first" (enumeration) and "really" (emphasis)
+                  would activate BASS + HIGH + MID layers together. Intensity (0.5-1.0) controls pitch height and volume. Complexity
+                  (commas, parentheses) adds pitch variation. All 5 layers route through reverb, delay, and chorus effects for spatial depth.
                 </p>
               </div>
 
               <p className="text-xs text-stone-600 border-t border-stone-300 pt-4 mt-4">
-                <strong>Sound ON.</strong> Using Claude 3.7 Sonnet with extended thinking (5000 token budget).
+                <strong>Sound ON.</strong> Using Claude 3.7 Sonnet with extended thinking (5000 token budget). Multi-layered synthesis via Tone.js.
               </p>
             </div>
           </div>

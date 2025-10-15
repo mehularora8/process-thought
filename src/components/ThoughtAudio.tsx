@@ -19,6 +19,13 @@ const CERTAINTY_MARKERS = /\b(clearly|definitely|must|obviously|certainly|surely
 const REVISION_MARKERS = /\b(actually|wait|however|but|although|though|yet|nevertheless|nonetheless|no,|hmm|reconsider|rethink)\b/i;
 const METACOGNITIVE_MARKERS = /\b(I think|I believe|I'm not sure|I wonder|let me|I need to|I should)\b/i;
 const QUESTION_MARKER = /\?/;
+const ENUMERATION_MARKERS = /\b(first|second|third|next|then|finally|lastly|step \d+|initially|subsequently|\d+\)|\d+\.)\b/i;
+const EMPHASIS_MARKERS = /\b(really|very|extremely|quite|highly|particularly|especially|significantly|crucially|absolutely)\b/i;
+const NEGATION_MARKERS = /\b(not|never|won't|can't|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|no\b)\b/i;
+const CAUSATION_MARKERS = /\b(because|therefore|thus|hence|consequently|as a result|so|since|given that|due to)\b/i;
+const HEDGING_MARKERS = /\b(sort of|kind of|somewhat|relatively|fairly|rather|somewhat|more or less|approximately)\b/i;
+const COMPARISON_MARKERS = /\b(similar|different|unlike|whereas|compared to|in contrast|on the other hand|alternatively)\b/i;
+const RESOLUTION_MARKERS = /\b(in conclusion|to summarize|ultimately|in the end|overall|in summary|final|conclusion)\b/i;
 
 interface ThoughtAudioProps {
   temperature: number;
@@ -45,13 +52,18 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       });
     }, []);
 
-    // Audio synthesis refs
-    const synthRef = useRef<any | null>(null);
-    const ambientSynthRef = useRef<any | null>(null);
-    const noiseRef = useRef<any | null>(null);
+    // Audio synthesis refs - Multi-layered architecture
+    const bassLayerRef = useRef<any | null>(null);
+    const midLayerRef = useRef<any | null>(null);
+    const highLayerRef = useRef<any | null>(null);
+    const padLayerRef = useRef<any | null>(null);
+    const textureNoiseRef = useRef<any | null>(null);
+
+    // Effects
     const filterRef = useRef<any | null>(null);
     const reverbRef = useRef<any | null>(null);
     const delayRef = useRef<any | null>(null);
+    const chorusRef = useRef<any | null>(null);
 
     // Temporal analysis tracking
     const lastDeltaTimeRef = useRef<number>(0);
@@ -108,8 +120,20 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       if (!Tone) return;
 
       const initAudio = async () => {
-        // Main melodic synth
-        synthRef.current = new Tone.PolySynth(Tone.Synth, {
+        // BASS LAYER: Sub frequencies (40-150Hz) for depth and foundation
+        bassLayerRef.current = new Tone.Synth({
+          oscillator: { type: 'triangle' },
+          envelope: {
+            attack: 0.3,
+            decay: 0.5,
+            sustain: 0.7,
+            release: 1.5,
+          },
+          volume: -15,
+        });
+
+        // MID LAYER: Main melodic content (150-2000Hz)
+        midLayerRef.current = new Tone.PolySynth(Tone.Synth, {
           oscillator: { type: 'sine' },
           envelope: {
             attack: 0.1,
@@ -117,10 +141,23 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
             sustain: 0.4,
             release: 1.0,
           },
+          volume: -10,
         });
 
-        // Ambient drone synth
-        ambientSynthRef.current = new Tone.Synth({
+        // HIGH LAYER: Shimmer and sparkle (2000-8000Hz)
+        highLayerRef.current = new Tone.Synth({
+          oscillator: { type: 'sine' },
+          envelope: {
+            attack: 0.05,
+            decay: 0.2,
+            sustain: 0.3,
+            release: 0.8,
+          },
+          volume: -20,
+        });
+
+        // PAD LAYER: Sustained atmospheric background
+        padLayerRef.current = new Tone.PolySynth(Tone.Synth, {
           oscillator: { type: 'triangle' },
           envelope: {
             attack: 2.0,
@@ -128,13 +165,17 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
             sustain: 0.6,
             release: 3.0,
           },
+          volume: -25,
         });
 
-        // Noise for texture (backtracking phase)
-        noiseRef.current = new Tone.Noise('pink');
+        // TEXTURE LAYER: Noise and grain for organic feel
+        textureNoiseRef.current = new Tone.Noise('pink');
+        textureNoiseRef.current.volume.value = -35;
+
+        // Shared filter for texture
         filterRef.current = new Tone.Filter({
           type: 'lowpass',
-          frequency: 200,
+          frequency: 800,
           rolloff: -24,
         });
 
@@ -150,16 +191,28 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
           wet: 0.3,
         });
 
+        chorusRef.current = new Tone.Chorus({
+          frequency: 1.5,
+          delayTime: 3.5,
+          depth: 0.7,
+          wet: 0.4,
+        });
+
         await reverbRef.current.generate();
+        chorusRef.current.start();
 
         // Connect audio graph
-        noiseRef.current.connect(filterRef.current);
+        textureNoiseRef.current.connect(filterRef.current);
         filterRef.current.connect(reverbRef.current);
 
-        synthRef.current.connect(delayRef.current);
+        bassLayerRef.current.connect(reverbRef.current);
+
+        midLayerRef.current.connect(chorusRef.current);
+        chorusRef.current.connect(delayRef.current);
         delayRef.current.connect(reverbRef.current);
 
-        ambientSynthRef.current.connect(reverbRef.current);
+        highLayerRef.current.connect(reverbRef.current);
+        padLayerRef.current.connect(reverbRef.current);
 
         reverbRef.current.toDestination();
       };
@@ -168,66 +221,176 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
 
       return () => {
         // Cleanup
-        synthRef.current?.dispose();
-        ambientSynthRef.current?.dispose();
-        noiseRef.current?.dispose();
+        bassLayerRef.current?.dispose();
+        midLayerRef.current?.dispose();
+        highLayerRef.current?.dispose();
+        padLayerRef.current?.dispose();
+        textureNoiseRef.current?.dispose();
         filterRef.current?.dispose();
         reverbRef.current?.dispose();
         delayRef.current?.dispose();
+        chorusRef.current?.dispose();
       };
     }, [Tone]);
 
-    // Play a note based on current phase and parameters
-    const playNote = useCallback((phase: string, intensity: number, velocity: number) => {
-      if (!Tone || !synthRef.current) return;
+    // Multi-layer sound triggering based on detected patterns
+    const triggerLayers = useCallback((
+      patterns: {
+        hasUncertainty: boolean;
+        hasCertainty: boolean;
+        hasRevision: boolean;
+        hasQuestion: boolean;
+        hasEnumeration: boolean;
+        hasEmphasis: boolean;
+        hasNegation: boolean;
+        hasCausation: boolean;
+        hasHedging: boolean;
+        hasComparison: boolean;
+        hasResolution: boolean;
+      },
+      intensity: number,
+      baseFrequency: number
+    ) => {
+      if (!Tone) return;
 
-      const scale = PHASE_SCALES[phase as keyof typeof PHASE_SCALES] || PHASE_SCALES.thinking;
-      const noteIndex = Math.floor(Math.random() * scale.length);
-      const note = scale[noteIndex];
+      const {
+        hasUncertainty, hasCertainty, hasRevision, hasQuestion,
+        hasEnumeration, hasEmphasis, hasNegation, hasCausation,
+        hasHedging, hasComparison, hasResolution
+      } = patterns;
 
-      // Velocity influences volume and duration
-      const volume = -20 + (velocity * 10); // -20dB to -10dB
-      const duration = 0.2 + (intensity * 0.3); // 0.2s to 0.5s
-
-      synthRef.current.triggerAttackRelease(note, duration, undefined, Tone.dbToGain(volume));
-
-      scheduledNotesRef.current.push(note);
-      if (scheduledNotesRef.current.length > 100) {
-        scheduledNotesRef.current.shift();
+      // BASS LAYER: Triggered by structure/causation (foundation)
+      if (hasCausation || hasEnumeration || hasResolution) {
+        const bassFreq = baseFrequency * 0.25; // Two octaves down
+        const bassVolume = -18 + (intensity * 5);
+        bassLayerRef.current?.triggerAttackRelease(
+          bassFreq,
+          '4n',
+          undefined,
+          Tone.dbToGain(bassVolume)
+        );
       }
-    }, [Tone]);
 
-    // Update ambient drone based on phase
-    const updateAmbient = useCallback((phase: string, intensity: number) => {
-      if (!Tone || !ambientSynthRef.current) return;
+      // MID LAYER: Main melodic content (always present)
+      if (midLayerRef.current) {
+        const midVolume = -12 + (intensity * 8);
 
-      const scale = PHASE_SCALES[phase as keyof typeof PHASE_SCALES] || PHASE_SCALES.thinking;
-      const rootNote = scale[0];
-
-      // Stop previous note and start new one
-      ambientSynthRef.current.triggerRelease();
-      setTimeout(() => {
-        if (ambientSynthRef.current && isPlayingRef.current) {
-          const volume = -30 + (intensity * 10);
-          ambientSynthRef.current.volume.value = volume;
-          ambientSynthRef.current.triggerAttack(rootNote);
+        if (hasRevision) {
+          // Descending pattern for revision
+          [0, -2, -4, -6, -8].forEach((semitones, i) => {
+            const freq = baseFrequency * Math.pow(2, semitones / 12);
+            setTimeout(() => {
+              midLayerRef.current?.triggerAttackRelease(
+                freq,
+                '32n',
+                undefined,
+                Tone.dbToGain(midVolume - i)
+              );
+            }, i * 30);
+          });
+        } else if (hasQuestion) {
+          // Ascending arpeggio for questions
+          [0, 2, 4, 7, 9].forEach((semitones, i) => {
+            const freq = baseFrequency * Math.pow(2, semitones / 12);
+            setTimeout(() => {
+              midLayerRef.current?.triggerAttackRelease(
+                freq,
+                '16n',
+                undefined,
+                Tone.dbToGain(midVolume - i)
+              );
+            }, i * 40);
+          });
+        } else if (hasCertainty) {
+          // Major chord for certainty
+          [0, 4, 7].forEach((semitones, i) => {
+            const freq = baseFrequency * Math.pow(2, semitones / 12);
+            setTimeout(() => {
+              midLayerRef.current?.triggerAttackRelease(
+                freq,
+                '8n',
+                undefined,
+                Tone.dbToGain(midVolume - (i * 3))
+              );
+            }, i * 20);
+          });
+        } else {
+          // Simple note
+          midLayerRef.current.triggerAttackRelease(
+            baseFrequency,
+            '8n',
+            undefined,
+            Tone.dbToGain(midVolume)
+          );
         }
-      }, 100);
-    }, [Tone]);
+      }
 
-    // Update noise filter for backtracking phase
-    const updateNoise = useCallback((isBacktracking: boolean, intensity: number) => {
-      if (!Tone || !noiseRef.current || !filterRef.current) return;
+      // HIGH LAYER: Sparkle and detail (triggered by emphasis, comparison, hedging)
+      if (hasEmphasis || hasComparison || hasHedging) {
+        const highFreq = baseFrequency * 2.5; // Higher frequencies
+        const highVolume = -22 + (intensity * 6);
 
-      if (isBacktracking && isPlayingRef.current) {
-        if (noiseRef.current.state !== 'started') {
-          noiseRef.current.start();
+        if (hasEmphasis) {
+          // Bright burst for emphasis
+          [0, 5, 7, 12].forEach((semitones, i) => {
+            const freq = highFreq * Math.pow(2, semitones / 12);
+            setTimeout(() => {
+              highLayerRef.current?.triggerAttackRelease(
+                freq,
+                '32n',
+                undefined,
+                Tone.dbToGain(highVolume - i * 2)
+              );
+            }, i * 25);
+          });
+        } else {
+          // Subtle shimmer
+          highLayerRef.current?.triggerAttackRelease(
+            highFreq,
+            '16n',
+            undefined,
+            Tone.dbToGain(highVolume)
+          );
         }
-        filterRef.current.frequency.value = 200 + (intensity * 300);
-        noiseRef.current.volume.value = -40 + (intensity * 15);
-      } else {
-        if (noiseRef.current.state === 'started') {
-          noiseRef.current.stop();
+      }
+
+      // PAD LAYER: Sustained background (triggered by uncertainty, resolution)
+      if (hasUncertainty || hasResolution || hasCausation) {
+        const padVolume = -28 + (intensity * 5);
+        const chord = hasUncertainty
+          ? [0, 1, 6] // Dissonant for uncertainty
+          : [0, 4, 7]; // Consonant for resolution/causation
+
+        chord.forEach((semitones, i) => {
+          const freq = baseFrequency * Math.pow(2, semitones / 12);
+          padLayerRef.current?.triggerAttackRelease(
+            freq,
+            '2n',
+            undefined,
+            Tone.dbToGain(padVolume - i * 2)
+          );
+        });
+      }
+
+      // TEXTURE LAYER: Noise (triggered by uncertainty, revision, negation)
+      if (hasUncertainty || hasRevision || hasNegation) {
+        if (textureNoiseRef.current && filterRef.current) {
+          const textureVolume = -38 + (intensity * 10);
+          const filterFreq = hasRevision ? 1200 : hasNegation ? 600 : 900;
+
+          filterRef.current.frequency.value = filterFreq;
+          textureNoiseRef.current.volume.value = textureVolume;
+
+          if (textureNoiseRef.current.state !== 'started') {
+            textureNoiseRef.current.start();
+          }
+
+          // Stop noise after a short duration
+          setTimeout(() => {
+            if (textureNoiseRef.current?.state === 'started') {
+              textureNoiseRef.current.stop();
+            }
+          }, 150);
         }
       }
     }, [Tone]);
@@ -244,7 +407,7 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
       },
 
       addDelta: (text: string) => {
-        if (!Tone || !isPlayingRef.current || !synthRef.current) return;
+        if (!Tone || !isPlayingRef.current || !midLayerRef.current) return;
 
         // Update tracking
         currentSentenceRef.current += text;
@@ -253,270 +416,112 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
           recentTextRef.current = recentTextRef.current.slice(-200); // Keep last 200 chars
         }
 
-        // === LINGUISTIC MARKER DETECTION ===
+        // === LINGUISTIC MARKER DETECTION (EXPANDED) ===
         const hasUncertainty = UNCERTAINTY_MARKERS.test(text);
         const hasCertainty = CERTAINTY_MARKERS.test(text);
         const hasRevision = REVISION_MARKERS.test(text);
         const hasMetacognition = METACOGNITIVE_MARKERS.test(text);
         const hasQuestion = QUESTION_MARKER.test(text);
+        const hasEnumeration = ENUMERATION_MARKERS.test(text);
+        const hasEmphasis = EMPHASIS_MARKERS.test(text);
+        const hasNegation = NEGATION_MARKERS.test(text);
+        const hasCausation = CAUSATION_MARKERS.test(text);
+        const hasHedging = HEDGING_MARKERS.test(text);
+        const hasComparison = COMPARISON_MARKERS.test(text);
+        const hasResolution = RESOLUTION_MARKERS.test(text);
 
-        // === STRUCTURAL PATTERN DETECTION ===
-
-        // Sentence completion detection
-        const sentenceEnded = /[.!?]\s*$/.test(text);
-        let sentenceLength = 0;
-        if (sentenceEnded) {
-          sentenceLength = currentSentenceRef.current.length;
-          sentenceLengthsRef.current.push(sentenceLength);
-          if (sentenceLengthsRef.current.length > 10) sentenceLengthsRef.current.shift();
-          currentSentenceRef.current = '';
-        }
-
-        // Complexity: count commas and nested structures
-        const commaCount = (text.match(/,/g) || []).length;
-        const complexity = commaCount + (text.match(/\(/g) || []).length;
-
-        // Repetition detection: check if recent text is similar
-        const isRepetitive = recentTextRef.current.length > 50 &&
-          text.length > 3 &&
-          recentTextRef.current.slice(0, -text.length).includes(text.trim());
-
-        // === PSYCHOLOGICAL STATE INFERENCE ===
-
-        let primaryState = 'thinking';
-        let intensity = 0.5;
+        // === CALCULATE INTENSITY ===
+        // Priority-based intensity calculation
+        let intensity = 0.5; // Base
 
         if (hasRevision) {
-          primaryState = 'revision';
           intensity = 0.9;
-        } else if (hasUncertainty || hasMetacognition) {
-          primaryState = 'uncertain';
-          intensity = 0.7;
+        } else if (hasResolution) {
+          intensity = 0.85;
         } else if (hasCertainty) {
-          primaryState = 'certain';
           intensity = 0.8;
+        } else if (hasUncertainty || hasMetacognition || hasHedging) {
+          intensity = 0.7;
+        } else if (hasEnumeration) {
+          intensity = 0.65;
         } else if (hasQuestion) {
-          primaryState = 'exploring';
           intensity = 0.6;
-        } else if (isRepetitive) {
-          primaryState = 'working';
-          intensity = 0.5;
+        } else if (hasCausation) {
+          intensity = 0.6;
         }
 
-        // Track state history for flow detection
-        psychStateHistoryRef.current.push(primaryState);
-        if (psychStateHistoryRef.current.length > 10) psychStateHistoryRef.current.shift();
+        // Boost intensity for emphasis
+        if (hasEmphasis) {
+          intensity = Math.min(1.0, intensity + 0.15);
+        }
 
-        const isFlowing = psychStateHistoryRef.current.slice(-5).every(s => s === 'certain');
-        const isStruggling = psychStateHistoryRef.current.slice(-5).filter(s => s === 'uncertain' || s === 'revision').length >= 3;
-
-        // === MUSICAL MAPPING ===
-
+        // === CALCULATE BASE FREQUENCY ===
         // Map intensity to pitch (0.0-1.0 → C3-C6)
         const baseMidi = 48; // C3
         const midiRange = 36; // 3 octaves
         let midiNote = baseMidi + (intensity * midiRange);
 
-        // Apply complexity to pitch variation
+        // Adjust for complexity (commas, parentheses)
+        const commaCount = (text.match(/,/g) || []).length;
+        const complexity = commaCount + (text.match(/\(/g) || []).length;
         if (complexity > 0) {
-          midiNote += complexity * 2; // Higher complexity = higher pitch
+          midiNote += complexity * 2;
         }
 
-        const frequency = Tone.Frequency(midiNote, 'midi').toFrequency();
+        const baseFrequency = Tone.Frequency(midiNote, 'midi').toFrequency();
 
-        // Map state to chord complexity/dissonance
-        const intervals = primaryState === 'revision' || primaryState === 'uncertain'
-          ? [0, 1, 6] // Dissonant (minor 2nd, tritone) for uncertainty/revision
-          : primaryState === 'certain'
-          ? [0, 4, 7] // Major triad for certainty
-          : primaryState === 'exploring'
-          ? [0, 2, 7, 9] // Add9 for exploration
-          : [0, 7]; // Perfect fifth (neutral)
-
-        // Map intensity to volume
-        const volume = -30 + (intensity * 15); // -30dB to -15dB range
-
-        // Map state to timbre (filter cutoff)
-        if (filterRef.current) {
-          const filterFreq = primaryState === 'revision' || primaryState === 'uncertain'
-            ? 800 + (intensity * 400) // Brighter for uncertainty
-            : primaryState === 'certain'
-            ? 400 + (intensity * 200) // Warmer for certainty
-            : 600; // Neutral
-          filterRef.current.frequency.value = filterFreq;
-        }
-
-        // === PLAY NOTES BASED ON PSYCHOLOGICAL STATES ===
-
-        let noteDuration = '8n';
-
-        // REVISION: Descending glissando
-        if (hasRevision) {
-          const startFreq = frequency * 1.3; // Start higher
-          const endFreq = frequency;
-
-          // Create descending pattern
-          for (let i = 0; i < 5; i++) {
-            const stepFreq = startFreq - ((startFreq - endFreq) / 5) * i;
-            setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(
-                stepFreq,
-                '32n',
-                undefined,
-                Tone.dbToGain(volume - i)
-              );
-            }, i * 30);
-          }
-          return;
-        }
-
-        // UNCERTAINTY: Wavering tremolo
-        if (primaryState === 'uncertain') {
-          for (let i = 0; i < 4; i++) {
-            setTimeout(() => {
-              const detune = (Math.random() - 0.5) * 25; // ±12.5 cents
-              synthRef.current?.triggerAttackRelease(
-                frequency * Math.pow(2, detune / 1200),
-                '16n',
-                undefined,
-                Tone.dbToGain(volume - 2)
-              );
-            }, i * 35);
-          }
-
-          // Add noise texture
-          updateNoise(true, intensity);
-          return;
-        }
-
-        // QUESTION/EXPLORING: Ascending arpeggio
-        if (hasQuestion) {
-          [0, 2, 4, 7, 9].forEach((interval, i) => {
-            const noteFreq = frequency * Math.pow(2, interval / 12);
-            setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(
-                noteFreq,
-                '16n',
-                undefined,
-                Tone.dbToGain(volume - i)
-              );
-            }, i * 40);
-          });
-          return;
-        }
-
-        // REPETITIVE/WORKING THROUGH: Repeated note with slight variation
-        if (isRepetitive) {
-          for (let i = 0; i < 3; i++) {
-            setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(
-                frequency,
-                '16n',
-                undefined,
-                Tone.dbToGain(volume - i * 2)
-              );
-            }, i * 50);
-          }
-          return;
-        }
-
-        // FLOWING: Smooth legato notes
-        if (isFlowing) {
-          noteDuration = '4n'; // Longer
-
-          // Clean consonant sound
-          synthRef.current.triggerAttackRelease(
-            frequency,
-            noteDuration,
-            undefined,
-            Tone.dbToGain(volume - 3)
-          );
-
-          // Add perfect fifth for richness
-          const fifthFreq = frequency * Math.pow(2, 7 / 12);
-          setTimeout(() => {
-            synthRef.current?.triggerAttackRelease(
-              fifthFreq,
-              noteDuration,
-              undefined,
-              Tone.dbToGain(volume - 8)
-            );
-          }, 30);
-
-          updateNoise(false, 0);
-          return;
-        }
-
-        // STRUGGLING: Dissonant cluster
-        if (isStruggling) {
-          intervals.forEach((interval, i) => {
-            const noteFreq = frequency * Math.pow(2, interval / 12);
-            setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(
-                noteFreq,
-                noteDuration,
-                undefined,
-                Tone.dbToGain(volume - (i * 2))
-              );
-            }, i * 15);
-          });
-
-          updateNoise(true, 0.7);
-          return;
-        }
-
-        // DEFAULT: Standard chord based on state
-        if (primaryState === 'certain') {
-          // CERTAINTY: Clean major chord
-          intervals.forEach((interval, i) => {
-            const noteFreq = frequency * Math.pow(2, interval / 12);
-            setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(
-                noteFreq,
-                noteDuration,
-                undefined,
-                Tone.dbToGain(volume - (i * 3))
-              );
-            }, i * 20);
-          });
-
-          updateNoise(false, 0);
-        } else {
-          // NEUTRAL: Simple notes
-          synthRef.current.triggerAttackRelease(
-            frequency,
-            noteDuration,
-            undefined,
-            Tone.dbToGain(volume)
-          );
-
-          updateNoise(false, 0);
-        }
+        // === TRIGGER MULTI-LAYERED SOUND ===
+        triggerLayers(
+          {
+            hasUncertainty,
+            hasCertainty,
+            hasRevision,
+            hasQuestion,
+            hasEnumeration,
+            hasEmphasis,
+            hasNegation,
+            hasCausation,
+            hasHedging,
+            hasComparison,
+            hasResolution,
+          },
+          intensity,
+          baseFrequency
+        );
       },
 
       startFlourish: () => {
-        // Final resolving chord
-        if (synthRef.current) {
+        // Final resolving chord across all layers
+        if (Tone && midLayerRef.current) {
           const scale = PHASE_SCALES.concluding;
           const chord = [scale[0], scale[2], scale[4]]; // Major triad
 
+          // Play flourish on mid and high layers
           chord.forEach((note, i) => {
             setTimeout(() => {
-              synthRef.current?.triggerAttackRelease(note, '2n', undefined, 0.5);
+              midLayerRef.current?.triggerAttackRelease(note, '2n', undefined, 0.5);
+              if (highLayerRef.current) {
+                const highNote = Tone.Frequency(note).transpose(12).toNote();
+                highLayerRef.current.triggerAttackRelease(highNote, '2n', undefined, 0.3);
+              }
             }, i * 100);
           });
+
+          // Add bass note
+          if (bassLayerRef.current) {
+            setTimeout(() => {
+              bassLayerRef.current?.triggerAttackRelease(scale[0], '1n', undefined, 0.4);
+            }, 0);
+          }
         }
       },
 
       stopAudio: () => {
         isPlayingRef.current = false;
 
-        // Fade out
-        if (ambientSynthRef.current) {
-          ambientSynthRef.current.triggerRelease();
-        }
-        if (noiseRef.current && noiseRef.current.state === 'started') {
-          noiseRef.current.stop();
+        // Stop texture noise if playing
+        if (textureNoiseRef.current && textureNoiseRef.current.state === 'started') {
+          textureNoiseRef.current.stop();
         }
       },
 
@@ -540,11 +545,8 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
         psychStateHistoryRef.current = [];
 
         // Stop all audio
-        if (ambientSynthRef.current) {
-          ambientSynthRef.current.triggerRelease();
-        }
-        if (noiseRef.current && noiseRef.current.state === 'started') {
-          noiseRef.current.stop();
+        if (textureNoiseRef.current && textureNoiseRef.current.state === 'started') {
+          textureNoiseRef.current.stop();
         }
 
         scheduledNotesRef.current = [];
