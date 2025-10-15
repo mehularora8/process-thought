@@ -53,17 +53,17 @@ const ThoughtAudio = forwardRef<ThoughtAudioRef, ThoughtAudioProps>(
     }, []);
 
     // Audio synthesis refs - Multi-layered architecture
-    const bassLayerRef = useRef<ToneType['Synth'] | null>(null);
-    const midLayerRef = useRef<ToneType['PolySynth'] | null>(null);
-    const highLayerRef = useRef<ToneType['Synth'] | null>(null);
-    const padLayerRef = useRef<ToneType['PolySynth'] | null>(null);
-    const textureNoiseRef = useRef<ToneType['Noise'] | null>(null);
+    const bassLayerRef = useRef<InstanceType<ToneType['Synth']> | null>(null);
+    const midLayerRef = useRef<InstanceType<ToneType['PolySynth']> | null>(null);
+    const highLayerRef = useRef<InstanceType<ToneType['Synth']> | null>(null);
+    const padLayerRef = useRef<InstanceType<ToneType['PolySynth']> | null>(null);
+    const textureNoiseRef = useRef<InstanceType<ToneType['Noise']> | null>(null);
 
     // Effects
-    const filterRef = useRef<ToneType['Filter'] | null>(null);
-    const reverbRef = useRef<ToneType['Reverb'] | null>(null);
-    const delayRef = useRef<ToneType['FeedbackDelay'] | null>(null);
-    const chorusRef = useRef<ToneType['Chorus'] | null>(null);
+    const filterRef = useRef<InstanceType<ToneType['Filter']> | null>(null);
+    const reverbRef = useRef<InstanceType<ToneType['Reverb']> | null>(null);
+    const delayRef = useRef<InstanceType<ToneType['FeedbackDelay']> | null>(null);
+    const chorusRef = useRef<InstanceType<ToneType['Chorus']> | null>(null);
 
     // Temporal analysis tracking
     const lastDeltaTimeRef = useRef<number>(0);

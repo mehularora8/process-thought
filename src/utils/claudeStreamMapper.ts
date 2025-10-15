@@ -166,13 +166,13 @@ export const createClaudeStreamProcessor = (canvasRef: ThoughtCanvasRef) => {
   const mapper = new ClaudeThoughtMapper(canvasRef);
 
   return {
-    processStreamEvent: (event: Record<string, unknown>) => {
+    processStreamEvent: (event: Record<string, unknown> & { type?: string; delta?: Record<string, unknown> & { type?: string } }) => {
       switch (event.type) {
         case 'content_block_delta':
           if (event.delta?.type === 'thinking_delta') {
-            mapper.processThinkingDelta(event as ClaudeThinkingDelta);
+            mapper.processThinkingDelta(event as unknown as ClaudeThinkingDelta);
           } else if (event.delta?.type === 'signature_delta') {
-            mapper.processSignatureDelta(event as ClaudeSignatureDelta);
+            mapper.processSignatureDelta();
           }
           break;
         case 'message_start':
