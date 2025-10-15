@@ -1,104 +1,121 @@
 import { NextRequest } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 export async function POST(request: NextRequest) {
-  const { prompt, temperature, model = 'gpt-4' } = await request.json();
+  const { prompt, temperature = 1.0, model = 'claude-3-7-sonnet-20250219' } = await request.json();
+
+  if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_api_key_here') {
+    return new Response(
+      JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured. Please add your API key to .env.local' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 
   // Create a ReadableStream for SSE
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const encoder = new TextEncoder();
-      
-      // Send start event
-      const startEvent = {
-        type: 'start',
-        data: {
-          run_id: `run_${Date.now()}`,
+
+      try {
+        // Send start event
+        const startEvent = {
+          type: 'start',
+          data: {
+            run_id: `run_${Date.now()}`,
+            model,
+            temperature
+          }
+        };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(startEvent)}\n\n`));
+
+        const startTime = Date.now();
+        let tokenCount = 0;
+        let fullThinking = '';
+        let fullAnswer = '';
+
+        // Create streaming request with extended thinking
+        const stream = await client.messages.stream({
           model,
-          temperature
-        }
-      };
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(startEvent)}\n\n`));
+          max_tokens: 8000,
+          temperature,
+          thinking: {
+            type: 'enabled',
+            budget_tokens: 5000
+          },
+          messages: [{
+            role: 'user',
+            content: prompt
+          }]
+        });
 
-      // Simulate thinking process with deltas
-      let tokenCount = 0;
-      const startTime = Date.now();
-      
-      const thinkingTexts = [
-        "Let me analyze this problem step by step.",
-        "First, I need to understand the core requirements.",
-        "Breaking this down into smaller components:",
-        "1. Understanding the user's intent",
-        "2. Considering different approaches", 
-        "3. Evaluating trade-offs and constraints",
-        "Now I'm weighing the pros and cons of each approach.",
-        "The most effective solution would be to...",
-        "Actually, let me reconsider this from another angle.",
-        "After careful thought, I believe the optimal approach is:"
-      ];
+        // Process the stream
+        for await (const chunk of stream) {
+          // Handle thinking content
+          if (chunk.type === 'content_block_start' && chunk.content_block.type === 'thinking') {
+            // Thinking block started
+          }
 
-      let textIndex = 0;
-      let charIndex = 0;
-      
-      const sendDelta = () => {
-        if (textIndex >= thinkingTexts.length) {
-          // Send end event
-          const endTime = Date.now();
-          const endEvent = {
-            type: 'end',
-            data: {
-              tokens_out: tokenCount,
-              ms: endTime - startTime
+          if (chunk.type === 'content_block_delta') {
+            if (chunk.delta.type === 'thinking_delta') {
+              // Thinking text chunk
+              const textChunk = chunk.delta.thinking;
+              fullThinking += textChunk;
+              tokenCount++;
+
+              const deltaEvent = {
+                type: 'delta',
+                data: {
+                  text_chunk: textChunk,
+                  t_rel_ms: Date.now() - startTime,
+                }
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(deltaEvent)}\n\n`));
+            } else if (chunk.delta.type === 'text_delta') {
+              // Answer text chunk
+              const textChunk = chunk.delta.text;
+              fullAnswer += textChunk;
             }
-          };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(endEvent)}\n\n`));
+          }
 
-          // Send answer after a short delay
-          setTimeout(() => {
+          // Check if stream is done
+          if (chunk.type === 'message_stop') {
+            const endTime = Date.now();
+            const endEvent = {
+              type: 'end',
+              data: {
+                tokens_out: tokenCount,
+                ms: endTime - startTime
+              }
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(endEvent)}\n\n`));
+
+            // Send the final answer
             const answerEvent = {
               type: 'answer',
               data: {
-                answer: `Based on my analysis of "${prompt}", here's my comprehensive response:\n\nThis is a thoughtful answer that takes into account the temperature setting of ${temperature} and the complexity of your question. The visualization you saw represents the actual thinking process, with each particle movement corresponding to the flow of ideas and reasoning.\n\nKey points:\n- The problem was approached systematically\n- Multiple perspectives were considered\n- The solution balances efficiency and effectiveness\n- Temperature (${temperature}) influenced the creative exploration of ideas\n\nThis demonstrates how AI reasoning can be visualized as a dynamic, flowing process rather than a black box.`
+                answer: fullAnswer || 'No response generated.'
               }
             };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(answerEvent)}\n\n`));
-            controller.close();
-          }, 500);
-          return;
+          }
         }
 
-        const currentText = thinkingTexts[textIndex];
-        if (charIndex >= currentText.length) {
-          textIndex++;
-          charIndex = 0;
-          setTimeout(sendDelta, 200 + Math.random() * 300); // Pause between sentences
-          return;
-        }
-
-        const chunkSize = Math.floor(Math.random() * 8) + 3; // 3-10 chars
-        const chunk = currentText.slice(charIndex, charIndex + chunkSize);
-        charIndex += chunkSize;
-        tokenCount += Math.ceil(chunk.length / 4); // Rough token estimate
-
-        const deltaEvent = {
-          type: 'delta',
+        controller.close();
+      } catch (error) {
+        console.error('Stream error:', error);
+        const errorEvent = {
+          type: 'error',
           data: {
-            text_chunk: chunk,
-            t_rel_ms: Date.now() - startTime
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
           }
         };
-
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(deltaEvent)}\n\n`));
-
-        // Variable delay based on content and temperature
-        const baseDelay = 50;
-        const temperatureDelay = temperature * 50; // Higher temp = more pauses
-        const punctuationDelay = /[.!?]/.test(chunk) ? 200 : 0;
-        
-        setTimeout(sendDelta, baseDelay + temperatureDelay + punctuationDelay + Math.random() * 50);
-      };
-
-      // Start sending deltas after a brief delay
-      setTimeout(sendDelta, 200);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+        controller.close();
+      }
     }
   });
 
