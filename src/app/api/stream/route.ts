@@ -6,7 +6,7 @@ const client = new Anthropic({
 });
 
 export async function POST(request: NextRequest) {
-  const { prompt, temperature = 1.0, model = 'claude-3-7-sonnet-20250219' } = await request.json();
+  const { prompt, temperature = 1.0, model = 'claude-sonnet-4-5' } = await request.json();
 
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_api_key_here') {
     return new Response(
@@ -40,11 +40,11 @@ export async function POST(request: NextRequest) {
         // Create streaming request with extended thinking
         const stream = await client.messages.stream({
           model,
-          max_tokens: 8000,
+          max_tokens: 15000,
           temperature,
           thinking: {
             type: 'enabled',
-            budget_tokens: 5000
+            budget_tokens: 10000
           },
           messages: [{
             role: 'user',
